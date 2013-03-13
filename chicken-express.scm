@@ -150,11 +150,13 @@
                   (! req path (string-join (map ->string (uri-path (? req %uri))) ""))
 
                   ; GET parameters
-                  (! req query (if (env "QUERY_STRING") (form-urldecode (env "QUERY_STRING") (list))))
+                  (let ((env-get (env "QUERY_STRING")))
+                    (! req query (if (and env-get (not (string-null? env-get)))
+                                   (form-urldecode env-get) (list))))
                   ; POST parameters
-                  (! req body (if (env "HTTP_CONTENT_LENGTH")
-                                (form-urldecode (fcgi-get-post-data in env))
-                                (list)))
+                  (let ((env-post (env "HTTP_CONTENT_LENGTH")))
+                    (! req body (if (and env-post (not (string-null? env-post)))
+                                  (form-urldecode (fcgi-get-post-data in env)) (list))))
 
                   ;; Set up response object
                   (! res %send out)
