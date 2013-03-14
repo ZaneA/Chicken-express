@@ -53,4 +53,4 @@ This module (`chicken-express.scm`) is using [protobj](http://wiki.call-cc.org/e
 
 Things starting with "%" (variables, methods, etc) are internal to the module. Everything else is in theory a part of the public API exposed by the module.
 
-To understand the code, start at the (chicken-express) method, followed by (! <app> listen) further down, and go from there.
+To understand the code, start at the `(chicken-express)` method, followed by `(! <app> listen)` further down, and go from there.
