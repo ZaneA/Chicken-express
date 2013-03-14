@@ -1,18 +1,28 @@
 #!/usr/bin/csi -script
-
 ;;
 ;; Small example of Chicken-express.
 ;;
 ;; I start with:
-;; CHICKEN_ENV=development einhorn -c chicken-express csi \
-;; -script main.scm -- --fd srv:127.0.0.1:3000,so_reuseaddr
+;; CHICKEN_ENV=development einhorn -c chicken-express ./main.scm --fd srv:127.0.0.1:3000,so_reuseaddr
 ;;
 
 (load "chicken-express.scm")
 (import chicken-express)
 
-; for syntax highlighting
-(use colorize)
+; for syntax highlighting and command-line parsing
+(use colorize matchable)
+
+; handle command-line
+(define *fd* #f) ; no file descriptor
+(define *port* 3000)
+
+(let loop ((args (command-line-arguments)))
+  (match args
+    [("--help" rest ...) (print "Usage: [--fd <file-descriptor>] [--port <port>] [--help]") (exit)]
+    [("--fd" fd rest ...) (set! *fd* (string->number fd)) (loop rest)]
+    [("--port" port rest ...) (set! *port* (string->number port)) (loop rest)]
+    [() #f]
+    [=> (loop (cdr args))]))
 
 ; define an app, this is the main entry-point
 (define app (chicken-express))
@@ -70,11 +80,5 @@
        (@ res send "<link rel=\"stylesheet\" type=\"text/css\" href=\"/public/style.css\" />")
        (@ res send (string-append "<pre>" syntax "</pre>")))))
 
-
-; handle command-line
-(define *fd* #f) ; no file descriptor
-(define *port* 3000)
-
-(set! *fd* (string->number (third (command-line-arguments))))
-      
+; run the application!
 (@ app listen (or *fd* *port*) *fd*)
