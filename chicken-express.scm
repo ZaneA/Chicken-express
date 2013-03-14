@@ -93,8 +93,8 @@
  
  (! <app> use ; mount middleware
     (match-lambda*
-      [(self proc) (%add-route self "/" proc 'middleware)]
-      [(self path proc) (%add-route self path proc 'middleware)]))
+      [(self proc) (%add-route self "/*" proc 'middleware)]
+      [(self path proc) (%add-route self (string-append path "*") proc 'middleware)]))
  
  (! <app> enable ; enable option
     (lambda (self k) (! self k #t)))
