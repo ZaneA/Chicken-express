@@ -14,7 +14,7 @@
  (chicken-express) ; This is the only entry-point, call this for an application object
  
  (import scheme chicken srfi-1 srfi-13 data-structures extras)
- (require-extension srfi-69 fastcgi uri-common protobj matchable posix)
+ (require-extension srfi-69 fastcgi uri-common protobj matchable posix irregex)
  
  (reexport protobj) ; protobj is pretty integral to the API at the moment
  
@@ -44,14 +44,33 @@
        obj
        (->string obj))))
  
- (define (%add-route self path proc)
-   (hash-table-set!
-     (? self routes) path
-     (append (hash-table-ref/default (? self routes) path (list)) (list proc))))
+ ; sloppily convert a basic route format into regex
+ (define (%route-to-regex route)
+   (let ((replacements
+           `(("\\/"             . "\\/")
+             ("\\*"             . ".*?")
+             (":([[:alpha:]]+)" . ,(lambda (match)
+                                     (format
+                                       "(?<~a>.*?)"
+                                       (irregex-match-substring match 1)))))))
+     (for-each
+       (lambda (n)
+         (set! route (irregex-replace/all (car n) route (cdr n))))
+       replacements)
+     route))
  
+ (define (%add-route self path proc verb)
+   (let ((path (%route-to-regex path)))
+     (! self routes (append (? self routes) (list (cons path proc))))))
+ 
+ (define (%wildcard-route? route)
+   (string=? (car route) ".*?"))
+ 
+ ; make default routes for an HTTP status
+ ; this is used to make a 404 route when no routes match
  (define (%make-status-handler status)
-   (lambda (self req res next)
-     (@ res send status)))
+   (cons #f (lambda (self req res next)
+              (@ res send status))))
 
  
  ;;
@@ -66,15 +85,16 @@
  (! <app> get
     (match-lambda*
       [(self k) (? self k)] ; get (as in get key)
-      [(self path proc) (%add-route self path proc)])) ; GET (as in verb)
+      [(self path proc) (%add-route self path proc 'get)])) ; GET (as in verb)
  
- (! <app> post %add-route) ; TODO should actually pass the HTTP verb
+ (! <app> post (cut %add-route <> <> <> 'post)) ; TODO should actually pass the HTTP verb
+ (! <app> all (cut %add-route <> <> <> 'all)) ; TODO should actually pass the HTTP verb
  ; TODO handle next('route')
  
  (! <app> use ; mount middleware
     (match-lambda*
-      [(self proc) (%add-route self "/" proc)]
-      [(self path proc) (%add-route self path proc)]))
+      [(self proc) (%add-route self "/" proc 'middleware)]
+      [(self path proc) (%add-route self path proc 'middleware)]))
  
  (! <app> enable ; enable option
     (lambda (self k) (! self k #t)))
@@ -109,23 +129,45 @@
       [(self view proc) #f]
       [(self view options proc) #f]))
  
- (! <app> routes (make-hash-table)) ; route info
+ (! <app> routes (list)) ; route info
  
  ; perform routing
  (! <app> %route
     (lambda (self req res)
-      (let* ((handle-404 (%make-status-handler 404))
-             (route-procs (hash-table-ref/default
-                            (? self routes) (? req path)
-                            (list handle-404))))
+      (let* ((path (? req path))
+             (handle-404 (%make-status-handler 404))
+             (route-procs (filter (lambda (route)
+                                    (irregex-match (car route) path))
+                                  (? self routes)))
+             (route-procs (if (null-list?
+                                (filter (complement %wildcard-route?) route-procs))
+                            (list handle-404)
+                            route-procs)))
         (call/cc
           (lambda (k/break) ; call break to end routing for this url
             (for-each
-              (lambda (proc)
+              (lambda (route)
                 (call/cc
                   (lambda (k/next) ; call next to continue routing
-                    (proc self req res (cut k/next #t))
-                    (k/break #f)))) ; if next is called in the route, this isn't reached
+                    
+                    ; this sets up parameters for a route, this can be highly optimised
+                    ; by simply avoiding a second match (we're already matching above)
+                    (when (car route)
+                      (let* ((matches (irregex-match (car route) path))
+                             (match-names (irregex-match-names matches))
+                             (match-values (if match-names
+                                             (map (lambda (match)
+                                                    (cons (car match) (irregex-match-substring matches (cdr match))))
+                                                  match-names)
+                                             (list))))
+                        (! req params match-values)))
+
+                    ; call the user proc
+                    ((cdr route) self req res (cut k/next #t))
+                    
+                    ; end routing for this url.
+                    ; if (next) is called from the proc then this isn't reached
+                    (k/break #f))))
               route-procs))))))
  
  ; small debug helper
@@ -147,7 +189,8 @@
                   
                   ;; Set up request object
                   (! req %uri (uri-reference (env "REQUEST_URI" "/")))
-                  (! req path (string-join (map ->string (uri-path (? req %uri))) ""))
+                  ; ugly way to turn the path into a string...
+                  (! req path (string-join (filter string? (uri-path (? req %uri))) "/" 'prefix))
 
                   ; GET parameters
                   (let ((env-get (env "QUERY_STRING")))
@@ -191,9 +234,14 @@
  
  (! <req> path "/")
  
- (! <req> param
-    (lambda (self k)
-      (object-get (? self query) k))) ; should check body and query too
+ (! <req> param ; get a parameter, can be from URL params, query, or POST body
+    (lambda (self k #!optional (default #f))
+      (let ((param (or (assoc k (? self params))
+                       (assoc k (? self query))
+                       (assoc k (? self body)))))
+        (if param
+          (cdr param)
+          default))))
  
  (! <req> route #f) ; Contains info on route
  
