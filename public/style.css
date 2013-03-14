@@ -1,0 +1,8 @@
+pre { font-family: Monaco, monospace; font-size: 11px; }
+.default { color: #111; font-style: none; font-weight: normal; }
+.comment { color: #66d; }
+.variable, .special { font-style: italic; }
+.symbol, .keyword { font-weight: bold; }
+.string { color: #b42; }
+.paren1, .paren2, .paren3, .paren4, .paren5, .paren6
+{ color: #666; }

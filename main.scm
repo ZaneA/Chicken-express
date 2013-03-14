@@ -3,10 +3,15 @@
 ;;
 ;; Small example of Chicken-express.
 ;;
+;; I start with:
+;; CHICKEN_ENV=development einhorn -c chicken-express csi \
+;; -script main.scm -- --fd srv:127.0.0.1:3000,so_reuseaddr
+;;
 
 (load "chicken-express.scm")
 (import chicken-express)
 
+; for syntax highlighting
 (use colorize)
 
 ; define an app, this is the main entry-point
@@ -17,9 +22,17 @@
    (lambda (self)
      (@ self enable "debug")))
 
+; serve static files from /public/
+; bit of a hack right now...
+(@ app use "/public/"
+   (lambda (self req res next)
+     (let ((filename (string-append (current-directory) (? req path))))
+       (if (regular-file? filename)
+         ; should actually use X-Accel-Redirect header (for Nginx)
+         (@ res send (read-all filename))
+         (next)))))
+
 ; wildcard route, kind of using this as a dumb template
-; also, since this currently does match anything, it's impossible to 404...
-; I need to look at how express handles these routes
 (@ app get "*"
    (lambda (self req res next)
      (@ res send "<h1>Welcome to Chicken-express!</h1>")
@@ -54,19 +67,11 @@
 (@ app get "*"
    (lambda (self req res next)
      (let ((syntax (html-colorize 'scheme (read-all "main.scm"))))
-       (@ res send
-          "<style>
-             pre { font-family: Monaco, monospace; font-size: 11px; }
-             .default { color: #111; font-style: none; font-weight: normal; }
-             .comment { color: #66d; }
-             .variable, .special { font-style: italic; }
-             .symbol, .keyword { font-weight: bold; }
-             .string { color: #b42; }
-             .paren1, .paren2, .paren3, .paren4, .paren5, .paren6
-             { color: #666; }
-           </style>")
+       (@ res send "<link rel=\"stylesheet\" type=\"text/css\" href=\"/public/style.css\" />")
        (@ res send (string-append "<pre>" syntax "</pre>")))))
 
+
+; handle command-line
 (define *fd* #f) ; no file descriptor
 (define *port* 3000)
 
