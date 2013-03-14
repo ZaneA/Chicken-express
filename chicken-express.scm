@@ -1,3 +1,4 @@
+;;
 ;; Chicken-express
 ;;
 ;; Small web framework for Chicken that is modelled after Express for Node.js (http://expressjs.com).
@@ -8,6 +9,7 @@
 ;; is in theory a part of the public API exposed by the module.
 ;;
 ;; To start hacking, see the (chicken-express) method, followed by (! <app> listen) and go from there.
+;;
 
 (module
  chicken-express
@@ -87,8 +89,8 @@
       [(self k) (? self k)] ; get (as in get key)
       [(self path proc) (%add-route self path proc 'get)])) ; GET (as in verb)
  
- (! <app> post (cut %add-route <> <> <> 'post)) ; TODO should actually pass the HTTP verb
- (! <app> all (cut %add-route <> <> <> 'all)) ; TODO should actually pass the HTTP verb
+ (! <app> post (cut %add-route <> <> <> 'post))
+ (! <app> all (cut %add-route <> <> <> 'all))
  ; TODO handle next('route')
  
  (! <app> use ; mount middleware
@@ -102,9 +104,11 @@
     (lambda (self k) (! self k #f)))
 
  (! <app> enabled? ; is option enabled?
-    (lambda (self k) (eq? #t (? self k)))) ; TODO This will throw an exception is the value isn't defined
+    (lambda (self k) ; a bit of a hack here to return false if value is missing
+      (handle-exceptions ex #f (eq? #t (? self k)))))
  (! <app> disabled? ; is option disabled?
-    (lambda (self k) (eq? #f (? self k))))
+    (lambda (self k)
+      (handle-exceptions ex #f (eq? #f (? self k)))))
  
  (! <app> configure ; run proc in appropriate environment
     (match-lambda*
