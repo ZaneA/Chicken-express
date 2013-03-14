@@ -17,18 +17,21 @@
    (lambda (self)
      (@ self enable "debug")))
 
+; wildcard route, kind of using this as a dumb template
+; also, since this currently does match anything, it's impossible to 404...
+; I need to look at how express handles these routes
+(@ app get "*"
+   (lambda (self req res next)
+     (@ res send "<h1>Welcome to Chicken-express!</h1>")
+     (next))) ; pass to next handler
+
 ; home route
 (@ app get "/"
    (lambda (self req res next)
-     (@ res send "<p>Welcome to Chicken-express!</p>")
-     (next))) ; pass to next handler
-
-; second home route
-(@ app get "/"
-   (lambda (self req res next)
-     (let ((parameters (? req body)))
-       (if (not (null-list? parameters))
-         (@ res send (format "<p>Parameters: <pre>~a</pre></p>" parameters))
+     (let ((name (@ req param 'name)))
+       (@ res send "<a href=\"/test/hello+world\">/test route</a>")
+       (if name
+         (@ res send (format "<p>Hello, <b>~a</b>!</p>" (if (string-null? name) "World" name)))
          (@ res send
             "<form action=\"/\" method=\"post\">
                Name:
@@ -36,9 +39,19 @@
                <input type=\"submit\" value=\"GO\" />
              </form>"))
        (next))))
+   
+; test route
+; displays a parameter pulled from the URL query
+(@ app get "/test/:name"
+   (lambda (self req res next)
+     (let ((path (format "Current path is <b>~a</b><br />~n" (? req path)))
+           (parameter (@ req param 'name)))
+       (@ res send (format "Parameter is \"~a\"<br />~n" parameter))
+       (@ res send path)
+       (next))))
 
 ; show example source
-(@ app get "/"
+(@ app get "*"
    (lambda (self req res next)
      (let ((syntax (html-colorize 'scheme (read-all "main.scm"))))
        (@ res send
@@ -53,12 +66,6 @@
              { color: #666; }
            </style>")
        (@ res send (string-append "<pre>" syntax "</pre>")))))
-   
-; test route
-(@ app get "/test"
-   (lambda (self req res next)
-     (let ((path (format "Current path is <b>~a</b><br />~n" (? req path))))
-       (@ res send path))))
 
 (define *fd* #f) ; no file descriptor
 (define *port* 3000)
