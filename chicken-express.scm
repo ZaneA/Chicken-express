@@ -18,7 +18,7 @@
 ; Base for this is largely taken from http://wiki.call-cc.org/set-read-syntax-example
 (set-read-syntax! #\{
    (lambda (port)
-     (let loop ((c (peek-char port)) (exps '()))
+     (let loop ((c (peek-char port)) (exps (list)))
        (cond ((eof-object? c)
               (error "EOF encountered while parsing { ... } clause"))
              ((char=? c #\})
@@ -57,7 +57,6 @@
  ;; Helpers
  ;;
  
- ; entry-point to the API
  (define* (chicken-express)
    "Entry-point to the API."
    (% <app>)) ; return a clone of the main application object
@@ -96,24 +95,34 @@
        replacements)
      route))
  
- (define* (%add-route self path proc verb #!optional (to-regex #t))
-   "Add a route to the stack. Route can be a regular route, or middleware."
-   (let ((path (if to-regex
-                  (%route-to-regex path)
-                 path)))
-     {!self.routes (append {?self.routes} (list (list path proc verb)))}))
- 
- (define* (%wildcard-route? route)
-   "Test if this route is a wildcard route, which is handled specially."
-   (string=? (car route) ".*?"))
- 
- ; make default routes for an HTTP status
- ; this is used to make a 404 route when no routes match
- (define* (%make-status-handler status)
-   "Create a route to handle a status code."
-   (list #f (lambda (self req res next)
-              {@res.send status})
-         'middleware))
+ (define* (%add-route self path proc verb)
+   "Add a route to the middleware stack."
+   (%add-middleware self "/" (%make-route-middleware path verb proc)))
+
+ (define* (%add-middleware self mount-path proc)
+   "Add a middleware to the stack at `mount-path`."
+   {!self.middleware (append {?self.middleware} (list (cons mount-path proc)))})
+
+ (define* (%make-route-middleware route-spec verb proc)
+   "Return a middleware procedure suitable for matching the provided `route-spec`."
+   (lambda (self req res next)
+     ; if verb (GET/POST/...) matches
+     (if (or (eq? verb 'ANY)
+             (eq? (string->symbol {@req.get "request-method"}) verb))
+       (let* ((route-regex (%route-to-regex route-spec))
+              (matches (irregex-match route-regex {?req.path}))
+              (match-names (if matches (irregex-match-names matches) #f))
+              (match-values (if match-names
+                               (map (lambda (match)
+                                      (cons (car match) (irregex-match-substring matches (cdr match))))
+                                    match-names)
+                              (list))))
+         (if matches
+            (begin
+              {!req.params match-values}
+              (proc self req res next))
+           (next)))
+       (next))))
 
  
  ;;
@@ -130,16 +139,16 @@
  (! <app> get
     (match-lambda*
       [(self k) {?self.k}] ; get (as in get key)
-      [(self path proc) (%add-route self path proc 'get)])) ; GET (as in verb)
+      [(self path proc) (%add-route self path proc 'GET)])) ; GET (as in verb)
  
- (! <app> post (cut %add-route <> <> <> 'post))
- (! <app> all (cut %add-route <> <> <> 'all))
+ (! <app> post (cut %add-route <> <> <> 'POST))
+ (! <app> all (cut %add-route <> <> <> 'ANY))
  ; TODO handle next('route')
  
  (! <app> use ; mount middleware
     (match-lambda*
-      [(self proc) (%add-route self "/" proc 'middleware #f)]
-      [(self path proc) (%add-route self path proc 'middleware #f)]))
+      [(self proc) (%add-middleware self "/" proc)]
+      [(self path proc) (%add-middleware self path proc)]))
  
  (! <app> enable ; enable option
     (lambda (self k) {!self.k #t}))
@@ -177,55 +186,29 @@
       [(self view options proc) #f]))
  
  (! <app> routes (list)) ; route info
+ (! <app> middleware (list))
 
  ; perform routing
  (! <app> %route
     (lambda (self req res)
       (let* ((path {?req.path})
-             (routes {?self.routes})
-             (handle-404 (%make-status-handler 404))
-             ; find suitable routes
-             (middleware-procs (filter (lambda (route)
-                                         (string-prefix? (car route) path))
-                                       routes))
-             (route-procs (filter (lambda (route)
-                                    (and (not (eq? (caddr route) 'middleware))
-                                         (irregex-match (car route) path)))
-                                  routes))
-             (route-procs (if (null-list?
-                                (filter (complement %wildcard-route?) route-procs))
-                            (list handle-404)
-                            route-procs)))
+             (middleware-list (filter (lambda (middleware)
+                                        (string-prefix? (car middleware) path))
+                                      {?self.middleware})))
         (call/cc
           (lambda (k/break) ; call break to end routing for this url
             (for-each
-              (lambda (route)
-                (match-let (((path-spec proc verb) route))
+              (lambda (middleware)
+                (match-let (((mount-path . proc) middleware))
                   (call/cc
                     (lambda (k/next) ; call next to continue routing
-
-                      ; this sets up parameters for a route, this can be highly optimised
-                      ; by simply avoiding a second match (we're already matching above)
-                      (when (and path-spec (not (eq? verb 'middleware)))
-                        (let* ((matches (irregex-match path-spec path))
-                               (match-names (irregex-match-names matches))
-                               (match-values (if match-names
-                                               (map (lambda (match)
-                                                      (cons (car match) (irregex-match-substring matches (cdr match))))
-                                                    match-names)
-                                               (list))))
-                          {!req.params match-values}))
-
-                      (when (and path-spec (eq? verb 'middleware))
-                        {!req.path (substring {?req.path} (string-length path-spec))})
-                      
-                      ; call the user proc
+                      {!req.path path} ; reset path
                       (proc self req res (cut k/next #t))
 
                       ; end routing for this url.
                       ; if (next) is called from the proc then this isn't reached
                       (k/break #f)))))
-              (append middleware-procs route-procs)))))))
+              middleware-list))))))
  
  ; small debug helper
  (! <app> %debug
@@ -242,9 +225,7 @@
               (lambda (in out err env)
                 (let ((req (% <req>)) ; new request
                       (res (% <res>))) ; new response
-                  {@self.%debug "Handling request: ~a~n" (env "REQUEST_URI" "/")}
-
-                  
+                  {@self.%debug "New connection...~n"}
                   
                   ;; Set up request object
                   {!req.%uri (uri-reference (env "REQUEST_URI" "/"))}
@@ -262,7 +243,7 @@
                     {!req.query (if (and env-get (not (string-null? env-get)))
                                    (form-urldecode env-get) (list))})
                   ; POST parameters
-                  ; TODO Move into middlware/body-parser.scm
+                  ; TODO Move (at least form-urldecode) into middleware/body-parser.scm
                   (let ((env-post (env "HTTP_CONTENT_LENGTH")))
                     {!req.body (if (and env-post (not (string-null? env-post)))
                                   (form-urldecode (fcgi-get-post-data in env)) (list))})
@@ -273,6 +254,9 @@
                   ; Run user routes
                   {@self.%route req res}
 
+                  (unless {?res.%sent-headers?}
+                    {@res.send 404})
+                  
                   #t)))) ; always return true or app will die!
         (if is-fd?
           ; Existing socket is provided to us
