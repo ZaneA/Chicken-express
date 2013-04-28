@@ -12,21 +12,22 @@ A few modules are required which can be installed with `chicken-install`, as wel
 - uri-common
 - matchable
 - fastcgi
+- base64 (for `middleware-favicon`)
 - colorize (for the example)
 
 ## Usage
 
-A small example is included as `main.scm`. You can run this with:
+A small example is included as `example.scm`. You can run this with:
 
-    CHICKEN_ENV=development ./main.scm
+    CHICKEN_ENV=development ./example.scm
 
 This will start a simple FastCGI server at port 3000 by default. The port can be changed by doing:
 
-    CHICKEN_ENV=development ./main.scm --port <port>
+    CHICKEN_ENV=development ./example.scm --port <port>
 
 Alternatively the framework is designed to be compatible with shared socket managers such as [Einhorn](https://github.com/stripe/einhorn) by passing a file descriptor instead of port:
 
-    CHICKEN_ENV=development einhorn -c chicken-express ./main.scm --fd srv:127.0.0.1:3000,so_reuseaddr
+    CHICKEN_ENV=development einhorn -c chicken-express ./example.scm --fd srv:127.0.0.1:3000,so_reuseaddr
 
 This allows you to add/remove workers at runtime. I am also planning on [Circus](http://circus.readthedocs.org) support, but it is not currently working due to some file descriptor issues.
 
@@ -39,7 +40,12 @@ The hello world should feel familiar to anyone that has used Express:
     (load "chicken-express.scm")
     (import chicken-express)
 
+    (load "middleware/logger.scm")
+    (import middleware-logger)
+
     (define app (chicken-express))
+
+    {@app.use (middleware-logger)}
 
     {@app.get "/" (lambda (self req res next)
                      {@res.send "hello world"})}

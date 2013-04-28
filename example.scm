@@ -3,7 +3,7 @@
 ;; Small example of Chicken-express.
 ;;
 ;; I start with:
-;; CHICKEN_ENV=development einhorn -c chicken-express ./main.scm --fd srv:127.0.0.1:3000,so_reuseaddr
+;; CHICKEN_ENV=development einhorn -c chicken-express ./example.scm --fd srv:127.0.0.1:3000,so_reuseaddr
 ;;
 
 ; load chicken-express
@@ -81,7 +81,7 @@
 ; show example source
 {@app.get "*"
    (lambda (self req res next)
-     (let ((syntax (html-colorize 'scheme (read-all "main.scm"))))
+     (let ((syntax (html-colorize 'scheme (read-all "example.scm"))))
       {@res.send "<link rel=\"stylesheet\" type=\"text/css\" href=\"/style.css\" />"}
       {@res.send (string-append "<pre>" syntax "</pre>")}))}
 
