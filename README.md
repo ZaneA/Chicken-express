@@ -41,10 +41,10 @@ The hello world should feel familiar to anyone that has used Express:
 
     (define app (chicken-express))
 
-    (@ app get "/" (lambda (self req res next)
-                     (@ res send "hello world")))
+    {@app.get "/" (lambda (self req res next)
+                     {@res.send "hello world"})}
 
-    (@ app listen 3000)
+    {@app.listen 3000}
 
 
 ## HACKING
