@@ -11,12 +11,15 @@
 ;; To start hacking, see the (chicken-express) method, followed by (! <app> listen) and go from there.
 ;;
 
+(include "documented-procedures.scm")
+
 (module
  chicken-express
  (chicken-express) ; This is the only entry-point, call this for an application object
  
  (import scheme chicken srfi-1 srfi-13 data-structures extras)
  (require-extension srfi-69 fastcgi uri-common protobj matchable posix irregex)
+ (import documented-procedures)
  
  (reexport protobj) ; protobj is pretty integral to the API at the moment
  
@@ -26,10 +29,12 @@
  ;;
  
  ; entry-point to the API
- (define (chicken-express)
+ (define* (chicken-express)
+   "Entry-point to the API."
    (% <app>)) ; return a clone of the main application object
 
- (define (%code-to-http-status code)
+ (define* (%code-to-http-status code)
+   "Convert a status code into a reply."
    (match code
      [200 "200 OK"]
      [301 "301 Moved Permanently"]
@@ -39,15 +44,16 @@
      [500 "500 Internal Server Error"]
      ))
  
- (define (%obj-to-http-body obj)
+ (define* (%obj-to-http-body obj)
+   "Convert an object into a suitable reply."
    (if (integer? obj)
      (%code-to-http-status obj)
      (if (string? obj)
        obj
        (->string obj))))
  
- ; sloppily convert a basic route format into regex
- (define (%route-to-regex route)
+ (define* (%route-to-regex route)
+   "(Sloppily) convert a basic route format into regular expression."
    (let ((replacements
            `(("\\/"             . "\\/")
              ("\\*"             . ".*?")
@@ -61,16 +67,19 @@
        replacements)
      route))
  
- (define (%add-route self path proc verb)
+ (define* (%add-route self path proc verb)
+   "Add a route."
    (let ((path (%route-to-regex path)))
      (! self routes (append (? self routes) (list (cons path proc))))))
  
- (define (%wildcard-route? route)
+ (define* (%wildcard-route? route)
+   "Test if this route is a wildcard route, which is handled specially."
    (string=? (car route) ".*?"))
  
  ; make default routes for an HTTP status
  ; this is used to make a 404 route when no routes match
- (define (%make-status-handler status)
+ (define* (%make-status-handler status)
+   "Create a route to handle a status code."
    (cons #f (lambda (self req res next)
               (@ res send status))))
 
@@ -79,7 +88,9 @@
  ;; App object
  ;;
  
- (define <app> (%))
+ (define* <app>
+   "The main app object."
+   (%))
  
  (! <app> set ; set a key
     (lambda (self k v)
@@ -201,6 +212,7 @@
                     (! req query (if (and env-get (not (string-null? env-get)))
                                    (form-urldecode env-get) (list))))
                   ; POST parameters
+                  ; TODO Move into middlware/body-parser.scm
                   (let ((env-post (env "HTTP_CONTENT_LENGTH")))
                     (! req body (if (and env-post (not (string-null? env-post)))
                                   (form-urldecode (fcgi-get-post-data in env)) (list))))
