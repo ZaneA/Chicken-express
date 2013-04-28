@@ -12,6 +12,36 @@
 ;;
 
 (include "documented-procedures.scm")
+ 
+; Read-syntax enabling protobj shortcut.
+; Replaces {@obj.method arg1 .. argn} with (@ obj method arg1 .. argn)
+; Base for this is largely taken from http://wiki.call-cc.org/set-read-syntax-example
+(set-read-syntax! #\{
+   (lambda (port)
+     (let loop ((c (peek-char port)) (exps '()))
+       (cond ((eof-object? c)
+              (error "EOF encountered while parsing { ... } clause"))
+             ((char=? c #\})
+              (read-char port) ; discard
+              (let* ((exps (reverse exps))
+                     ; "@" "obj" "method"
+                     (objs (string-split (symbol->string (car exps)) "."))
+                     ; @ ! ?
+                     (type (string->symbol (substring (car objs) 0 1)))
+                     ; obj
+                     (obj (string->symbol (substring (car objs) 1)))
+                     ; (method)
+                     (props (map string->symbol (cdr objs)))
+                     ; (arg1 .. argn)
+                     (args (cdr exps)))
+                `(,type ,obj ,@props ,@args)))
+             ((char-whitespace? c)
+              (read-char port) ; discard
+              (loop (peek-char port) exps))
+             (else
+              (let ((exp (read port)))
+                (loop (peek-char port)
+                      (cons exp exps))))))))
 
 (module
  chicken-express
@@ -22,7 +52,6 @@
  (import documented-procedures)
  
  (reexport protobj) ; protobj is pretty integral to the API at the moment
- 
  
  ;;
  ;; Helpers
@@ -70,7 +99,7 @@
  (define* (%add-route self path proc verb)
    "Add a route."
    (let ((path (%route-to-regex path)))
-     (! self routes (append (? self routes) (list (cons path proc))))))
+     {!self.routes (append {?self.routes} (list (cons path proc)))}))
  
  (define* (%wildcard-route? route)
    "Test if this route is a wildcard route, which is handled specially."
@@ -81,7 +110,7 @@
  (define* (%make-status-handler status)
    "Create a route to handle a status code."
    (cons #f (lambda (self req res next)
-              (@ res send status))))
+              {@res.send status})))
 
  
  ;;
@@ -94,10 +123,10 @@
  
  (! <app> set ; set a key
     (lambda (self k v)
-      (! self k v)))
+      {!self.k v}))
  (! <app> get
     (match-lambda*
-      [(self k) (? self k)] ; get (as in get key)
+      [(self k) {?self.k}] ; get (as in get key)
       [(self path proc) (%add-route self path proc 'get)])) ; GET (as in verb)
  
  (! <app> post (cut %add-route <> <> <> 'post))
@@ -110,9 +139,9 @@
       [(self path proc) (%add-route self (string-append path "*") proc 'middleware)]))
  
  (! <app> enable ; enable option
-    (lambda (self k) (! self k #t)))
+    (lambda (self k) {!self.k #t}))
  (! <app> disable ; disable option
-    (lambda (self k) (! self k #f)))
+    (lambda (self k) {!self.k #f}))
 
  (! <app> enabled? ; is option enabled?
     (lambda (self k) ; a bit of a hack here to return false if value is missing
@@ -149,11 +178,11 @@
  ; perform routing
  (! <app> %route
     (lambda (self req res)
-      (let* ((path (? req path))
+      (let* ((path {?req.path})
              (handle-404 (%make-status-handler 404))
              (route-procs (filter (lambda (route)
                                     (irregex-match (car route) path))
-                                  (? self routes)))
+                                  {?self.routes}))
              (route-procs (if (null-list?
                                 (filter (complement %wildcard-route?) route-procs))
                             (list handle-404)
@@ -175,7 +204,7 @@
                                                     (cons (car match) (irregex-match-substring matches (cdr match))))
                                                   match-names)
                                              (list))))
-                        (! req params match-values)))
+                        {!req.params match-values}))
 
                     ; call the user proc
                     ((cdr route) self req res (cut k/next #t))
@@ -188,40 +217,40 @@
  ; small debug helper
  (! <app> %debug
     (lambda (self . args)
-      (when (@ self enabled? "debug")
+      (when {@self.enabled? "debug"}
         (apply printf (cons (format "[PID ~a] ~a" (current-process-id) (car args)) (cdr args))))))
  
  (! <app> listen
     (lambda (self port #!optional (is-fd? #f))
-      (@ self %debug "Chicken-express application listening on fcgi://~a~n"
-         (if is-fd? port (format "127.0.0.1:~a" port)))
+      {@self.%debug "Chicken-express application listening on fcgi://~a~n"
+         (if is-fd? port (format "127.0.0.1:~a" port))}
        
       (let ((callback
               (lambda (in out err env)
                 (let ((req (% <req>)) ; new request
                       (res (% <res>))) ; new response
-                  (@ self %debug "Handling request: ~a~n" (env "REQUEST_URI" "/"))
+                  {@self.%debug "Handling request: ~a~n" (env "REQUEST_URI" "/")}
                   
                   ;; Set up request object
-                  (! req %uri (uri-reference (env "REQUEST_URI" "/")))
+                  {!req.%uri (uri-reference (env "REQUEST_URI" "/"))}
                   ; ugly way to turn the path into a string...
-                  (! req path (string-join (filter string? (uri-path (? req %uri))) "/" 'prefix))
+                  {!req.path (string-join (filter string? (uri-path (? req %uri))) "/" 'prefix)}
 
                   ; GET parameters
                   (let ((env-get (env "QUERY_STRING")))
-                    (! req query (if (and env-get (not (string-null? env-get)))
-                                   (form-urldecode env-get) (list))))
+                    {!req.query (if (and env-get (not (string-null? env-get)))
+                                   (form-urldecode env-get) (list))})
                   ; POST parameters
                   ; TODO Move into middlware/body-parser.scm
                   (let ((env-post (env "HTTP_CONTENT_LENGTH")))
-                    (! req body (if (and env-post (not (string-null? env-post)))
-                                  (form-urldecode (fcgi-get-post-data in env)) (list))))
+                    {!req.body (if (and env-post (not (string-null? env-post)))
+                                  (form-urldecode (fcgi-get-post-data in env)) (list))})
 
                   ;; Set up response object
-                  (! res %send out)
+                  {!res.%send out}
 
                   ; Run user routes
-                  (@ self %route req res)
+                  {@self.%route req res}
 
                   #t)))) ; always return true or app will die!
         (if is-fd?
@@ -252,9 +281,9 @@
  
  (! <req> param ; get a parameter, can be from URL params, query, or POST body
     (lambda (self k #!optional (default #f))
-      (let ((param (or (assoc k (? self params))
-                       (assoc k (? self query))
-                       (assoc k (? self body)))))
+      (let ((param (or (assoc k {?self.params})
+                       (assoc k {?self.query})
+                       (assoc k {?self.body}))))
         (if param
           (cdr param)
           default))))
@@ -264,10 +293,10 @@
  (! <req> %headers #f) ; implementation detail
  (! <req> get
     (lambda (self header)
-      (? (? self %headers) header))) ; Get header
+      (? {?self.%headers} header))) ; Get header
  (! <req> header
     (lambda (self header)
-      (@ self get header))) ; alias
+      {@self.get header})) ; alias
 
  ;;
  ;; Response object
@@ -278,14 +307,14 @@
  (! <res> %status 200) ; response status code
  (! <res> status ; set the response status
     (lambda (self s)
-      (! self %status s)))
+      {!self.%status s}))
  
  ; helper method for sending headers
  ; invoked before sending reponse body
  (! <res> %sent-headers? #f)
  (! <res> %send-headers
     (lambda (self)
-      (unless (? self %sent-headers?)
+      (unless {?self.%sent-headers?}
         (let ((headers '(("Content-type" "text/html"))))
           (set! headers (append headers `(("Status" ,(%code-to-http-status (? self %status))))))
           (set! headers (map (lambda (header)
@@ -293,9 +322,9 @@
                                        (first header)
                                        (second header)))
                              headers))
-          ((? self %send) (string-join headers "\r\n"))
-          ((? self %send) "\r\n\r\n")
-          (! self %sent-headers? #t)))))
+          ({?self.%send} (string-join headers "\r\n"))
+          ({?self.%send} "\r\n\r\n")
+          {!self.%sent-headers? #t}))))
  
  ; send proc (defaults to no-op, is replaced by FastCGI during a request)
  (! <res> %send (lambda (str) #f))
@@ -305,11 +334,11 @@
     (match-lambda*
       [(self obj) ; one parameter, can be int/string/object
        (when (integer? obj)
-         (@ self status obj))
-       (@ self %send-headers)
-       ((? self %send) (%obj-to-http-body obj))]
+         {@self.status obj})
+       {@self.%send-headers}
+       ({?self.%send} (%obj-to-http-body obj))]
       [(self code obj) ; two parameters, first should be int, second can be string/object
-       (@ self status code)
-       (@ self %send-headers)
-       ((? self %send) (%obj-to-http-body obj))]))
+       {@self.status code}
+       {@self.%send-headers}
+       ({?self.%send} (%obj-to-http-body obj))]))
  )
