@@ -6,8 +6,13 @@
 ;; CHICKEN_ENV=development einhorn -c chicken-express ./main.scm --fd srv:127.0.0.1:3000,so_reuseaddr
 ;;
 
+; load chicken-express
 (load "chicken-express.scm")
 (import chicken-express)
+
+; load static file middleware
+(load "middleware/static.scm")
+(import middleware-static)
 
 ; for syntax highlighting and command-line parsing
 (use colorize matchable)
@@ -32,20 +37,14 @@
    (lambda (self)
      {@self.enable "debug"})}
 
-; serve static files from /public/
-; bit of a hack right now...
-{@app.use "/public/"
-   (lambda (self req res next)
-     (let ((filename (string-append (current-directory) {?req.path})))
-       (if (regular-file? filename)
-         ; should actually use X-Accel-Redirect header (for Nginx)
-         {@res.send (read-all filename)}
-         (next))))}
+; serve static files
+{@app.use (middleware-static "./public/")}
 
 ; wildcard route, kind of using this as a dumb template
 {@app.get "*"
    (lambda (self req res next)
      {@res.send "<h1>Welcome to Chicken-express!</h1>"}
+     {@res.send (format "<pre>~a</pre>" {@req.get "remote-addr"})}
      (next))} ; pass to next handler
 
 ; home route
@@ -77,7 +76,7 @@
 {@app.get "*"
    (lambda (self req res next)
      (let ((syntax (html-colorize 'scheme (read-all "main.scm"))))
-      {@res.send "<link rel=\"stylesheet\" type=\"text/css\" href=\"/public/style.css\" />"}
+      {@res.send "<link rel=\"stylesheet\" type=\"text/css\" href=\"/style.css\" />"}
       {@res.send (string-append "<pre>" syntax "</pre>")}))}
 
 ; run the application!

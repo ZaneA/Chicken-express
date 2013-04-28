@@ -51,7 +51,7 @@
  (require-extension srfi-69 fastcgi uri-common protobj matchable posix irregex)
  (import documented-procedures)
  
- (reexport protobj) ; protobj is pretty integral to the API at the moment
+ (reexport documented-procedures protobj) ; protobj is pretty integral to the API at the moment
  
  ;;
  ;; Helpers
@@ -96,10 +96,12 @@
        replacements)
      route))
  
- (define* (%add-route self path proc verb)
-   "Add a route."
-   (let ((path (%route-to-regex path)))
-     {!self.routes (append {?self.routes} (list (cons path proc)))}))
+ (define* (%add-route self path proc verb #!optional (to-regex #t))
+   "Add a route to the stack. Route can be a regular route, or middleware."
+   (let ((path (if to-regex
+                  (%route-to-regex path)
+                 path)))
+     {!self.routes (append {?self.routes} (list (list path proc verb)))}))
  
  (define* (%wildcard-route? route)
    "Test if this route is a wildcard route, which is handled specially."
@@ -109,8 +111,9 @@
  ; this is used to make a 404 route when no routes match
  (define* (%make-status-handler status)
    "Create a route to handle a status code."
-   (cons #f (lambda (self req res next)
-              {@res.send status})))
+   (list #f (lambda (self req res next)
+              {@res.send status})
+         'middleware))
 
  
  ;;
@@ -135,8 +138,8 @@
  
  (! <app> use ; mount middleware
     (match-lambda*
-      [(self proc) (%add-route self "/*" proc 'middleware)]
-      [(self path proc) (%add-route self (string-append path "*") proc 'middleware)]))
+      [(self proc) (%add-route self "/" proc 'middleware #f)]
+      [(self path proc) (%add-route self path proc 'middleware #f)]))
  
  (! <app> enable ; enable option
     (lambda (self k) {!self.k #t}))
@@ -174,15 +177,21 @@
       [(self view options proc) #f]))
  
  (! <app> routes (list)) ; route info
- 
+
  ; perform routing
  (! <app> %route
     (lambda (self req res)
       (let* ((path {?req.path})
+             (routes {?self.routes})
              (handle-404 (%make-status-handler 404))
+             ; find suitable routes
+             (middleware-procs (filter (lambda (route)
+                                         (string-prefix? (car route) path))
+                                       routes))
              (route-procs (filter (lambda (route)
-                                    (irregex-match (car route) path))
-                                  {?self.routes}))
+                                    (and (not (eq? (caddr route) 'middleware))
+                                         (irregex-match (car route) path)))
+                                  routes))
              (route-procs (if (null-list?
                                 (filter (complement %wildcard-route?) route-procs))
                             (list handle-404)
@@ -191,28 +200,32 @@
           (lambda (k/break) ; call break to end routing for this url
             (for-each
               (lambda (route)
-                (call/cc
-                  (lambda (k/next) ; call next to continue routing
-                    
-                    ; this sets up parameters for a route, this can be highly optimised
-                    ; by simply avoiding a second match (we're already matching above)
-                    (when (car route)
-                      (let* ((matches (irregex-match (car route) path))
-                             (match-names (irregex-match-names matches))
-                             (match-values (if match-names
-                                             (map (lambda (match)
-                                                    (cons (car match) (irregex-match-substring matches (cdr match))))
-                                                  match-names)
-                                             (list))))
-                        {!req.params match-values}))
+                (match-let (((path-spec proc verb) route))
+                  (call/cc
+                    (lambda (k/next) ; call next to continue routing
 
-                    ; call the user proc
-                    ((cdr route) self req res (cut k/next #t))
-                    
-                    ; end routing for this url.
-                    ; if (next) is called from the proc then this isn't reached
-                    (k/break #f))))
-              route-procs))))))
+                      ; this sets up parameters for a route, this can be highly optimised
+                      ; by simply avoiding a second match (we're already matching above)
+                      (when (and path-spec (not (eq? verb 'middleware)))
+                        (let* ((matches (irregex-match path-spec path))
+                               (match-names (irregex-match-names matches))
+                               (match-values (if match-names
+                                               (map (lambda (match)
+                                                      (cons (car match) (irregex-match-substring matches (cdr match))))
+                                                    match-names)
+                                               (list))))
+                          {!req.params match-values}))
+
+                      (when (and path-spec (eq? verb 'middleware))
+                        {!req.path (substring {?req.path} (string-length path-spec))})
+                      
+                      ; call the user proc
+                      (proc self req res (cut k/next #t))
+
+                      ; end routing for this url.
+                      ; if (next) is called from the proc then this isn't reached
+                      (k/break #f)))))
+              (append middleware-procs route-procs)))))))
  
  ; small debug helper
  (! <app> %debug
@@ -230,11 +243,19 @@
                 (let ((req (% <req>)) ; new request
                       (res (% <res>))) ; new response
                   {@self.%debug "Handling request: ~a~n" (env "REQUEST_URI" "/")}
+
+                  
                   
                   ;; Set up request object
                   {!req.%uri (uri-reference (env "REQUEST_URI" "/"))}
                   ; ugly way to turn the path into a string...
                   {!req.path (string-join (filter string? (uri-path (? req %uri))) "/" 'prefix)}
+
+                  ; Add environment
+                  {!req.%headers (map (lambda (header)
+                                        (cons (string-downcase (string-translate (car header) #\_ #\-))
+                                              (cdr header)))
+                                      (env))}
 
                   ; GET parameters
                   (let ((env-get (env "QUERY_STRING")))
@@ -290,10 +311,12 @@
  
  (! <req> route #f) ; Contains info on route
  
- (! <req> %headers #f) ; implementation detail
+ (! <req> %headers (list)) ; implementation detail
  (! <req> get
     (lambda (self header)
-      (? {?self.%headers} header))) ; Get header
+      (let ((headers {?self.%headers})
+            (header (string-downcase header)))
+        (alist-ref header headers string=?))))
  (! <req> header
     (lambda (self header)
       {@self.get header})) ; alias
