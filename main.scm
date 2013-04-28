@@ -10,9 +10,13 @@
 (load "chicken-express.scm")
 (import chicken-express)
 
-; load static file middleware
+; load middleware
+(load "middleware/logger.scm")
 (load "middleware/static.scm")
+(load "middleware/favicon.scm")
+(import middleware-logger)
 (import middleware-static)
+(import middleware-favicon)
 
 ; for syntax highlighting and command-line parsing
 (use colorize matchable)
@@ -37,8 +41,10 @@
    (lambda (self)
      {@self.enable "debug"})}
 
-; serve static files
+; enable middleware
+{@app.use (middleware-logger)}
 {@app.use (middleware-static "./public/")}
+{@app.use (middleware-favicon)}
 
 ; wildcard route, kind of using this as a dumb template
 {@app.get "*"
@@ -48,7 +54,7 @@
      (next))} ; pass to next handler
 
 ; home route
-{@app.get "/"
+{@app.all "/"
    (lambda (self req res next)
      (let ((name {@req.param 'name}))
        {@res.send "<a href=\"/test/hello+world\">/test route</a>"}
