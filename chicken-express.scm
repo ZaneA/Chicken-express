@@ -1,21 +1,26 @@
 ;;
 ;; Chicken-express
 ;;
-;; Small web framework for Chicken that is modelled after Express for Node.js (http://expressjs.com).
-;; Right now it also uses FastCGI and therefore should be placed behind a server such as Nginx.
+;; Small web framework for Chicken that is modelled after Express for
+;; Node.js (http://expressjs.com). Right now it also uses FastCGI and
+;; therefore should be placed behind a server such as Nginx.
 ;;
-;; This module uses protobj for its objects, see http://wiki.call-cc.org/eggref/4/protobj for info.
-;; Things starting with "%" (variables, methods, etc) are internal to the module. Everything else
-;; is in theory a part of the public API exposed by the module.
+;; This module uses protobj for its objects, see
+;; http://wiki.call-cc.org/eggref/4/protobj for info. Things starting
+;; with "%" (variables, methods, etc) are internal to the module.
+;; Everything else is in theory a part of the public API exposed by
+;; the module.
 ;;
-;; To start hacking, see the (chicken-express) method, followed by (! <app> listen) and go from there.
+;; To start hacking, see the (chicken-express) method, followed by
+;; (! <app> listen) and go from there.
 ;;
 
 (include "documented-procedures.scm")
  
 ; Read-syntax enabling protobj shortcut.
 ; Replaces {@obj.method arg1 .. argn} with (@ obj method arg1 .. argn)
-; Base for this is largely taken from http://wiki.call-cc.org/set-read-syntax-example
+; Base for this is largely taken from
+; http://wiki.call-cc.org/set-read-syntax-example
 (set-read-syntax! #\{
    (lambda (port)
      (let loop ((c (peek-char port)) (exps (list)))
@@ -209,8 +214,8 @@
                       {!req.path path} ; reset path
                       (proc self req res (cut k/next #t))
 
-                      ; end routing for this url.
-                      ; if (next) is called from the proc then this isn't reached
+                      ; end routing for this url. if (next) is called
+                      ; from the proc then this isn't reached
                       (k/break #f)))))
               middleware-list))))))
  
@@ -288,7 +293,8 @@
  
  (! <req> path "/")
  
- (! <req> param ; get a parameter, can be from URL params, query, or POST body
+ ; get a parameter, can be from URL params, query, or POST body
+ (! <req> param
     (lambda (self k #!optional (default #f))
       (let ((param (or (assoc k {?self.params})
                        (assoc k {?self.query})

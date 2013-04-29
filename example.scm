@@ -3,7 +3,8 @@
 ;; Small example of Chicken-express.
 ;;
 ;; I start with:
-;; CHICKEN_ENV=development einhorn -c chicken-express ./example.scm --fd srv:127.0.0.1:3000,so_reuseaddr
+;; CHICKEN_ENV=development einhorn -c chicken-express ./example.scm \
+;; --fd srv:127.0.0.1:3000,so_reuseaddr
 ;;
 
 ; load chicken-express
