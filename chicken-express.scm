@@ -77,11 +77,12 @@
  
  (define* (%obj-to-http-body obj)
    "Convert an object into a suitable reply."
-   (if (integer? obj)
-     (%code-to-http-status obj)
-     (if (string? obj)
-       obj
-       (->string obj))))
+   (cond ((integer? obj)
+          (%code-to-http-status obj))
+         ((string? obj)
+          obj)
+         (else
+          (->string obj))))
  
  (define* (%route-to-regex route)
    "(Sloppily) convert a basic route format into regular expression."
@@ -325,19 +326,20 @@
  (! <res> %send-headers
     (lambda (self)
       (unless {?self.%sent-headers?}
-        (let ((headers '(("Content-type" "text/html"))))
+        (let ((headers '(("Content-type" "text/html")))
+              (send {?self.%send}))
           (set! headers (append headers `(("Status" ,(%code-to-http-status (? self %status))))))
           (set! headers (map (lambda (header)
                                (format "~a: ~a"
                                        (first header)
                                        (second header)))
                              headers))
-          ({?self.%send} (string-join headers "\r\n"))
-          ({?self.%send} "\r\n\r\n")
+          (send (string-join headers "\r\n"))
+          (send "\r\n\r\n")
           {!self.%sent-headers? #t}))))
  
  ; send proc (defaults to no-op, is replaced by FastCGI during a request)
- (! <res> %send (lambda (str) #f))
+ (! <res> %send identity)
  
  ; send a status or object
  (! <res> send
