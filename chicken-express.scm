@@ -34,7 +34,10 @@
                      (props (map string->symbol (cdr objs)))
                      ; (arg1 .. argn)
                      (args (cdr exps)))
-                `(,type ,obj ,@props ,@args)))
+                (cond ((eq? type '+) ; append
+                       `(! ,obj ,@props (append (? ,obj ,@props) (list ,@args))))
+                      (else
+                       `(,type ,obj ,@props ,@args)))))
              ((char-whitespace? c)
               (read-char port) ; discard
               (loop (peek-char port) exps))
@@ -101,7 +104,7 @@
 
  (define* (%add-middleware self mount-path proc)
    "Add a middleware to the stack at `mount-path`."
-   {!self.middleware (append {?self.middleware} (list (cons mount-path proc)))})
+   {+self.middleware (cons mount-path proc)})
 
  (define* (%make-route-middleware route-spec verb proc)
    "Return a middleware procedure suitable for matching the provided `route-spec`."
