@@ -14,9 +14,11 @@
 (load "middleware/logger.scm")
 (load "middleware/static.scm")
 (load "middleware/favicon.scm")
+(load "middleware/body-parser.scm")
 (import middleware-logger)
 (import middleware-static)
 (import middleware-favicon)
+(import middleware-body-parser)
 
 ; for syntax highlighting and command-line parsing
 (use colorize matchable)
@@ -45,6 +47,7 @@
 {@app.use (middleware-logger)}
 {@app.use (middleware-static "./public/")}
 {@app.use (middleware-favicon)}
+{@app.use (middleware-body-parser)}
 
 ; wildcard route, kind of using this as a dumb template
 {@app.get "*"

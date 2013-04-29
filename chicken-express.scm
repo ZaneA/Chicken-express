@@ -246,10 +246,10 @@
                     {!req.query (if (and env-get (not (string-null? env-get)))
                                    (form-urldecode env-get) (list))})
                   ; POST parameters
-                  ; TODO Move (at least form-urldecode) into middleware/body-parser.scm
                   (let ((env-post (env "HTTP_CONTENT_LENGTH")))
                     {!req.body (if (and env-post (not (string-null? env-post)))
-                                  (form-urldecode (fcgi-get-post-data in env)) (list))})
+                                  (fcgi-get-post-data in env)
+                                 "")})
 
                   ;; Set up response object
                   {!res.%send out}
