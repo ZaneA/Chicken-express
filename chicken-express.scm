@@ -15,7 +15,7 @@
 ;; (! <app> listen) and go from there.
 ;;
 
-(include "documented-procedures.scm")
+(load "chookstrings.scm")
  
 ; Read-syntax enabling protobj shortcut.
 ; Replaces {@obj.method arg1 .. argn} with (@ obj method arg1 .. argn)
@@ -57,9 +57,9 @@
  
  (import scheme chicken srfi-1 srfi-13 data-structures extras)
  (require-extension srfi-69 fastcgi uri-common protobj matchable posix irregex)
- (import documented-procedures)
+ (import chookstrings)
  
- (reexport documented-procedures protobj) ; protobj is pretty integral to the API at the moment
+ (reexport chookstrings protobj) ; protobj is pretty integral to the API at the moment
  
  ;;
  ;; Helpers
@@ -113,7 +113,8 @@
    {+self.middleware (cons mount-path proc)})
 
  (define* (%make-route-middleware route-spec verb proc)
-   "Return a middleware procedure suitable for matching the provided `route-spec`."
+   "Return a middleware procedure suitable for matching the provided
+   `route-spec`."
    (lambda (self req res next)
      ; if verb (GET/POST/...) matches
      (if (or (eq? verb 'ANY)
@@ -142,64 +143,94 @@
    "The main app object."
    (%))
  
- (! <app> set ; set a key
-    (lambda (self k v)
+ (! <app> set
+    (lambda* (self k v)
+      "Set the key `k` to value `v`."
       {!self.k v}))
+
  (! <app> get
-    (match-lambda*
-      [(self k) {?self.k}] ; get (as in get key)
-      [(self path proc) (%add-route self path proc 'GET)])) ; GET (as in verb)
+    (docstring
+     "Get the key `k`, or add a route matching a GET request."
+     (match-lambda*
+       [(self k) {?self.k}] ; get (as in get key)
+       [(self path proc) (%add-route self path proc 'GET)]))) ; GET (as in verb)
  
- (! <app> post (cut %add-route <> <> <> 'POST))
- (! <app> all (cut %add-route <> <> <> 'ANY))
+ (! <app> post
+    (docstring
+     "Add a route matching a POST request."
+     (cut %add-route <> <> <> 'POST)))
+
+ (! <app> all
+    (docstring
+     "Add a route matching any type of request."
+     (cut %add-route <> <> <> 'ANY)))
+
  ; TODO handle next('route')
  
- (! <app> use ; mount middleware
-    (match-lambda*
-      [(self proc) (%add-middleware self "/" proc)]
-      [(self path proc) (%add-middleware self path proc)]))
+ (! <app> use
+    (docstring
+     "Mount middleware procedure `proc` onto `path`."
+     (match-lambda*
+       [(self proc) (%add-middleware self "/" proc)]
+       [(self path proc) (%add-middleware self path proc)])))
  
- (! <app> enable ; enable option
-    (lambda (self k) {!self.k #t}))
- (! <app> disable ; disable option
-    (lambda (self k) {!self.k #f}))
+ (! <app> enable
+    (lambda* (self k)
+      "Enable open `k`."
+      {!self.k #t}))
 
- (! <app> enabled? ; is option enabled?
-    (lambda (self k) ; a bit of a hack here to return false if value is missing
+ (! <app> disable
+    (lambda* (self k)
+      "Disable option `k`."
+      {!self.k #f}))
+
+ (! <app> enabled?
+    (lambda* (self k)
+      "Check to see if option `k` is enabled."
       (handle-exceptions ex #f (eq? #t (? self k)))))
- (! <app> disabled? ; is option disabled?
-    (lambda (self k)
+
+ (! <app> disabled?
+    (lambda* (self k)
+      "Check to see if option `k` is disabled."
       (handle-exceptions ex #f (eq? #f (? self k)))))
  
- (! <app> configure ; run proc in appropriate environment
-    (match-lambda*
-      [(self proc) (proc self)] ; run always
-      [(self env proc)          ; run only if environment matches
-       (if (equal? env (get-environment-variable "CHICKEN_ENV"))
-         (proc self)
-         #f)]))
+ (! <app> configure
+    (docstring
+     "When in environment `env`, run procedure `proc`."
+     (match-lambda*
+       [(self proc) (proc self)] ; run always
+       [(self env proc)          ; run only if environment matches
+        (if (equal? env (get-environment-variable "CHICKEN_ENV"))
+          (proc self)
+          #f)])))
  
- (! <app> engine ; assign a templating engine to file extension
-    (lambda (self ext proc) #f))
+ (! <app> engine
+    (lambda* (self ext proc)
+      "Assign a templating engine to file extension."
+      #f))
  
- (! <app> param ; apply logic to passed parameters
-    (match-lambda*
-      [(self proc) #f]
-      [(self param proc) #f]))
+ (! <app> param
+    (docstring
+     "Apply logic to passed parameters."
+     (match-lambda*
+       [(self proc) #f]
+       [(self param proc) #f])))
  
  ;(! <app> locals
  
- (! <app> render ; render a template
-    (match-lambda*
-      [(self view proc) #f]
-      [(self view options proc) #f]))
+ (! <app> render
+    (docstring
+     "Render a template."
+     (match-lambda*
+       [(self view proc) #f]
+       [(self view options proc) #f])))
  
  (! <app> routes (list)) ; route info
  (! <app> middleware (list))
 
- ; perform routing
  (! <app> %route
-    (lambda (self req res)
+    (lambda* (self req res)
+      "Perform application routing, based on request path and verb."
       (let* ((path {?req.path})
              (middleware-list (filter (lambda (middleware)
                                         (string-prefix? (car middleware) path))
@@ -219,14 +250,15 @@
                       (k/break #f)))))
               middleware-list))))))
  
- ; small debug helper
  (! <app> %debug
-    (lambda (self . args)
+    (lambda* (self . args)
+      "Debug helper. Acts like `printf` when \"debug\" is enabled."
       (when {@self.enabled? "debug"}
         (apply printf (cons (format "[PID ~a] ~a" (current-process-id) (car args)) (cdr args))))))
  
  (! <app> listen
-    (lambda (self port #!optional (is-fd? #f))
+    (lambda* (self port #!optional (is-fd? #f))
+      "Start the Chicken-express main-loop."
       {@self.%debug "Chicken-express application listening on fcgi://~a~n"
          (if is-fd? port (format "127.0.0.1:~a" port))}
        
@@ -293,9 +325,9 @@
  
  (! <req> path "/")
  
- ; get a parameter, can be from URL params, query, or POST body
  (! <req> param
-    (lambda (self k #!optional (default #f))
+    (lambda* (self k #!optional (default #f))
+      "Get a parameter `k` or return `default` if missing."
       (let ((param (or (assoc k {?self.params})
                        (assoc k {?self.query})
                        (assoc k {?self.body}))))
@@ -307,12 +339,14 @@
  
  (! <req> %headers (list)) ; implementation detail
  (! <req> get
-    (lambda (self header)
+    (lambda* (self header)
+      "Fetch `header` from the current request."
       (let ((headers {?self.%headers})
             (header (string-downcase header)))
         (alist-ref header headers string=?))))
  (! <req> header
-    (lambda (self header)
+    (lambda* (self header)
+      "Fetch `header` from the current request."
       {@self.get header})) ; alias
 
  ;;
@@ -321,16 +355,19 @@
  
  (define <res> (%))
  
- (! <res> %status 200) ; response status code
- (! <res> status ; set the response status
-    (lambda (self s)
+ (! <res> %status 200) ; default response status code
+ (! <res> status
+    (lambda* (self s)
+      "Set the response status code to `s`."
       {!self.%status s}))
  
  ; helper method for sending headers
  ; invoked before sending reponse body
  (! <res> %sent-headers? #f)
  (! <res> %send-headers
-    (lambda (self)
+    (lambda* (self)
+      "Send headers unless already sent. Used to make sure headers are
+      sent before body."
       (unless {?self.%sent-headers?}
         (let ((headers '(("Content-type" "text/html")))
               (send {?self.%send}))
@@ -349,14 +386,17 @@
  
  ; send a status or object
  (! <res> send
-    (match-lambda*
-      [(self obj) ; one parameter, can be int/string/object
-       (when (integer? obj)
-         {@self.status obj})
-       {@self.%send-headers}
-       ({?self.%send} (%obj-to-http-body obj))]
-      [(self code obj) ; two parameters, first should be int, second can be string/object
-       {@self.status code}
-       {@self.%send-headers}
-       ({?self.%send} (%obj-to-http-body obj))]))
+    (docstring
+     "Send a status or object as response. Object is converted to an
+     appropriate representation before being sent."
+     (match-lambda*
+       [(self obj) ; one parameter, can be int/string/object
+        (when (integer? obj)
+          {@self.status obj})
+        {@self.%send-headers}
+        ({?self.%send} (%obj-to-http-body obj))]
+       [(self code obj) ; two parameters, first should be int, second can be string/object
+        {@self.status code}
+        {@self.%send-headers}
+        ({?self.%send} (%obj-to-http-body obj))])))
  )
