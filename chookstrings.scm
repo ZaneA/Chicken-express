@@ -43,5 +43,8 @@
         (extend-procedure
          (second args)
          `((docstring . ,(first args))))
-        (cdr (assoc 'docstring (procedure-data (first args))))))
+        (let ((data (procedure-data (first args))))
+          (if data
+              (cdr (assoc 'docstring (or (procedure-data (first args)))))
+              #f))))
   )

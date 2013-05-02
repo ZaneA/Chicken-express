@@ -31,7 +31,7 @@
               (let* ((exps (reverse exps))
                      ; "@" "obj" "method"
                      (objs (string-split (symbol->string (car exps)) "."))
-                     ; @ ! ?
+                     ; @ ! ? + ~
                      (type (string->symbol (substring (car objs) 0 1)))
                      ; obj
                      (obj (string->symbol (substring (car objs) 1)))
@@ -41,6 +41,8 @@
                      (args (cdr exps)))
                 (cond ((eq? type '+) ; append
                        `(! ,obj ,@props (append (? ,obj ,@props) (list ,@args))))
+                      ((eq? type '~) ; docstring
+                       `(@ ,obj docstring (quote ,@props)))
                       (else
                        `(,type ,obj ,@props ,@args)))))
              ((char-whitespace? c)
@@ -134,14 +136,27 @@
            (next)))
        (next))))
 
+ ;;
+ ;; Root object
+ ;;
+
+ (define* <root>
+   "The root object from which others are derived."
+   (%))
+
+ (! <root> docstring
+    (lambda* (self proc)
+      "Return the docstring for the procedure named `proc`."
+      (docstring (object-get self proc))))
  
+
  ;;
  ;; App object
  ;;
  
  (define* <app>
    "The main app object."
-   (%))
+   (% <root>))
  
  (! <app> set
     (lambda* (self k v)
@@ -216,7 +231,7 @@
        [(self proc) #f]
        [(self param proc) #f])))
  
- (! <app> locals (%))
+ (! <app> locals (% <root>))
  
  (! <app> render
     (docstring
@@ -314,14 +329,14 @@
  ;; Request object
  ;;
  
- (define <req> (%))
+ (define <req> (% <root>))
  
  (! <req> params (list))  ; URL params as alist
  (! <req> query (list)) ; URL query as alist
  (! <req> body (list)) ; Similar to above only with POST data
- (! <req> files (%)) ; Contains info on uploaded files
- (! <req> cookies (%)) ; Cookies
- (! <req> signedCookies (%)) ; Signed Cookies
+ (! <req> files (% <root>)) ; Contains info on uploaded files
+ (! <req> cookies (% <root>)) ; Cookies
+ (! <req> signedCookies (% <root>)) ; Signed Cookies
  
  (! <req> path "/")
  
@@ -353,9 +368,9 @@
  ;; Response object
  ;;
  
- (define <res> (%))
+ (define <res> (% <root>))
 
- (! <res> locals (%))
+ (! <res> locals (% <root>))
 
  (! <res> render
     (docstring
