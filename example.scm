@@ -52,19 +52,19 @@
 
 ; wildcard route, kind of using this as a dumb template
 {@app.get "*"
-   (lambda (self req res next)
-     {@res.send "<h1>Welcome to Chicken-express!</h1>"}
-     {@res.send (format "<pre>~a</pre>" {@req.get "remote-addr"})}
+   (lambda (self request response next)
+     {@response.send "<h1>Welcome to Chicken-express!</h1>"}
+     {@response.send (format "<pre>~a</pre>" {@request.get "remote-addr"})}
      (next))} ; pass to next handler
 
 ; home route
 {@app.all "/"
-   (lambda (self req res next)
-     (let ((name {@req.param 'name}))
-       {@res.send "<a href=\"/test/hello+world\">/test route</a>"}
+   (lambda (self request response next)
+     (let ((name {@request.param 'name}))
+       {@response.send "<a href=\"/test/hello+world\">/test route</a>"}
        (if name
-         {@res.send (format "<p>Hello, <b>~a</b>!</p>" (if (string-null? name) "World" name))}
-         {@res.send
+         {@response.send (format "<p>Hello, <b>~a</b>!</p>" (if (string-null? name) "World" name))}
+         {@response.send
             "<form action=\"/\" method=\"post\">
                Name:
                <input type=\"text\" name=\"name\" />
@@ -75,19 +75,19 @@
 ; test route
 ; displays a parameter pulled from the URL query
 {@app.get "/test/:name"
-   (lambda (self req res next)
-     (let ((path (format "Current path is <b>~a</b><br />~n" {?req.path}))
-           (parameter {@req.param 'name}))
-       {@res.send (format "Parameter is \"~a\"<br />~n" parameter)}
-       {@res.send path}
+   (lambda (self request response next)
+     (let ((path (format "Current path is <b>~a</b><br />~n" {?request.path}))
+           (parameter {@request.param 'name}))
+       {@response.send (format "Parameter is \"~a\"<br />~n" parameter)}
+       {@response.send path}
        (next)))}
 
 ; show example source
 {@app.get "*"
-   (lambda (self req res next)
+   (lambda (self request response next)
      (let ((syntax (html-colorize 'scheme (read-all "example.scm"))))
-      {@res.send "<link rel=\"stylesheet\" type=\"text/css\" href=\"/style.css\" />"}
-      {@res.send (string-append "<pre>" syntax "</pre>")}))}
+      {@response.send "<link rel=\"stylesheet\" type=\"text/css\" href=\"/style.css\" />"}
+      {@response.send (string-append "<pre>" syntax "</pre>")}))}
 
 ; run the application!
 {@app.listen (or *fd* *port*) *fd*}
