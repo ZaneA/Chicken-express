@@ -216,14 +216,14 @@
        [(self proc) #f]
        [(self param proc) #f])))
  
- ;(! <app> locals
+ (! <app> locals (%))
  
  (! <app> render
     (docstring
-     "Render a template."
+     "Render `view` and provide the output as an argument to `proc`."
      (match-lambda*
        [(self view proc) #f]
-       [(self view options proc) #f])))
+       [(self view locals proc) #f])))
  
  (! <app> routes (list)) ; route info
  (! <app> middleware (list))
@@ -354,6 +354,16 @@
  ;;
  
  (define <res> (%))
+
+ (! <res> locals (%))
+
+ (! <res> render
+    (docstring
+     "Render `view` and respond with or provide the output as an argument to `proc`."
+     (match-lambda*
+       [(self proc) #f]
+       [(self view proc) #f]
+       [(self view locals proc) #f])))
  
  (! <res> %status 200) ; default response status code
  (! <res> status
