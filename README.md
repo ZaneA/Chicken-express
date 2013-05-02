@@ -47,8 +47,8 @@ The hello world should feel familiar to anyone that has used Express:
 
     {@app.use (middleware-logger)}
 
-    {@app.get "/" (lambda (self req res next)
-                     {@res.send "hello world"})}
+    {@app.get "/" (lambda (self request response next)
+                     {@response.send "Hello, world!"})}
 
     {@app.listen 3000}
 
